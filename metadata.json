@@ -1,0 +1,7 @@
+{
+  "name": "SmartCard AI",
+  "description": "An AI-powered, minimalist PWA for intelligent credit card management and real-time benefit analysis in Taiwan.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
