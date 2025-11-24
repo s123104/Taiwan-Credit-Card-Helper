@@ -28,17 +28,14 @@ const cleanJson = (text: string) => {
 
 // Helper to create consistent IDs for deduplication
 const generateDeterministicId = (bank: string, name: string): string => {
-  // Remove spaces, special chars, normalize width
-  const raw = `${bank}${name}`.toLowerCase()
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)) // Fullwidth to halfwidth
-    .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+  const raw = `${bank}${name}`.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
   return `live_${raw}`;
 };
 
 export const fetchTrendingCards = async (
   category: CardCategory, 
   language: Language,
-  queryOverride?: string
+  queryOverride?: string // Allow custom queries for the background loader
 ): Promise<CreditCard[]> => {
   if (!apiKey) return [];
 
@@ -47,15 +44,15 @@ export const fetchTrendingCards = async (
   const month = now.getMonth() + 1;
   const todayStr = `${year}年${month}月`;
 
-  // Dynamic Keyword Generation for standard categories
+  // Dynamic Keyword Generation
   const categoryKeywords: Record<string, string> = {
-    [CardCategory.ALL]: `台灣 ${year} ${month}月 信用卡 必辦 熱門 排行榜 Top 10`,
-    [CardCategory.CONVENIENCE]: `台灣 ${year} ${month}月 超商信用卡 7-11 全家 萊爾富 回饋`,
-    [CardCategory.ONLINE]: `台灣 ${year} ${month}月 網購神卡 蝦皮 momo PChome 淘寶`,
-    [CardCategory.TRAVEL_JP_KR]: `台灣 ${year} ${month}月 日本 韓國 旅遊信用卡 海外實體消費`,
-    [CardCategory.GAS]: `台灣 ${year} ${month}月 加油信用卡 停車優惠`,
-    [CardCategory.GENERAL]: `台灣 ${year} ${month}月 現金回饋信用卡 無腦刷 不限通路`,
-    [CardCategory.MOBILE_PAY]: `台灣 ${year} ${month}月 行動支付信用卡 Apple Pay LINE Pay 街口`
+    [CardCategory.ALL]: `台灣 ${year} ${month}月 信用卡 必辦 熱門 排行榜`,
+    [CardCategory.CONVENIENCE]: `台灣 ${year} 超商信用卡 7-11 全家 回饋`,
+    [CardCategory.ONLINE]: `台灣 ${year} 網購神卡 蝦皮 momo PChome`,
+    [CardCategory.TRAVEL_JP_KR]: `台灣 ${year} 日本 韓國 旅遊信用卡 海外回饋`,
+    [CardCategory.GAS]: `台灣 ${year} 加油信用卡 交通回饋`,
+    [CardCategory.GENERAL]: `台灣 ${year} 現金回饋信用卡 無腦刷`,
+    [CardCategory.MOBILE_PAY]: `台灣 ${year} 行動支付信用卡 Apple Pay LINE Pay`
   };
 
   const searchContext = queryOverride || categoryKeywords[category] || categoryKeywords[CardCategory.ALL];
@@ -66,43 +63,41 @@ export const fetchTrendingCards = async (
 
   // Enhanced prompt for Deep Data, Search Verification, and UI stability
   const prompt = `
-    Role: Senior Financial Analyst AI.
-    Task: Use Google Search to find 3-5 high-quality, distinct Taiwan Credit Cards matching: "${searchContext}".
+    Task: Use Google Search to find 3-5 distinct Taiwan Credit Cards matching this query: "${searchContext}".
     Current Date: ${todayStr}.
     
     CRITICAL INSTRUCTIONS:
-    1. TARGET: Find the exact cards mentioned in recent blogs/news (e.g., PTT, Dcard, Money101) for ${year}.
-    2. ACCURACY: Verify the 'value' (reward %) and 'cap' (limit) are current.
-    3. DIVERSITY: If the query is generic, find a mix of banks. If specific (e.g. "Gaming"), find niche cards.
-    4. EXCLUSIONS: Do not invent cards. Do not use cards discontinued before ${year}.
+    1. PRIORITIZE "Hot" (熱門), "Must-Have" (必辦), and High Rewards (>3%) cards.
+    2. USE THE googleSearch TOOL. Do not guess.
+    3. Verify current reward rates and caps on official bank websites.
+    4. Exclude cards discontinued before ${year}.
+    5. DEDUPLICATE: Ensure each card is unique in this batch.
     
     ${langPrompt}
 
-    DATA FORMATTING RULES:
-    1. 'value': THE LARGEST HIGHLIGHT NUMBER (e.g. "3%", "10%", "$500").
-    2. 'cap': Concise limit (e.g. "NT$500/月", "無上限", "季回饋").
-    3. 'condition': Key requirement (e.g. "需登錄", "限新戶", "指定通路").
-    4. 'description': Catchy 3-5 word summary (e.g. "網購神卡", "旅日首選").
+    UI RULES:
+    1. 'value': Highest percentage number (e.g. "3%", "10%").
+    2. 'cap': MAX 10 chars (e.g. "NT$500/月", "無上限").
+    3. 'condition': Full details.
     
-    Return a STRICT JSON array (no markdown):
+    Return a STRICT JSON array:
     [
       {
-        "bank": "Bank Name (Short, e.g. 國泰世華)",
-        "name": "Card Name (Exact, e.g. CUBE卡)",
-        "imageUrl": "Leave empty",
+        "bank": "Bank Name (e.g. 國泰世華)",
+        "name": "Card Name (e.g. CUBE卡)",
         "rewards": {
           "${category === CardCategory.ALL ? 'GENERAL' : category}": {
             "value": "3%",
             "cap": "無上限",
-            "condition": "Condition text",
-            "description": "Short summary"
+            "condition": "Details...",
+            "description": "Summary"
           }
         },
-        "annualFee": { "fee": "NT$xxx", "waiveCondition": "Text" },
-        "tags": ["Tag1", "Tag2"],
-        "pros": ["Pro 1", "Pro 2"],
-        "cons": ["Con 1"],
-        "link": "https://www.google.com/search?q=Bank+Card+Apply",
+        "annualFee": { "fee": "NT$1800", "waiveCondition": "電子帳單免年費" },
+        "tags": ["tag1", "tag2"],
+        "pros": ["Benefit 1", "Benefit 2"],
+        "cons": ["Limitation 1"],
+        "link": "Official URL",
         "lastUpdated": "${todayStr}"
       }
     ]
@@ -124,21 +119,17 @@ export const fetchTrendingCards = async (
         return json.map((c: any) => {
           // Robust reward mapping: Ensure at least one reward exists
           let rewards = c.rewards || {};
-          // If the AI put the reward in a random key or missing, default to GENERAL
+          // If the AI put the reward in a random key, try to fix it or default to GENERAL
           if (Object.keys(rewards).length === 0) {
-             rewards = { [CardCategory.GENERAL]: { value: "Unknown", description: "See details" } };
+             rewards = { [CardCategory.GENERAL]: { value: "N/A", description: "General" } };
           }
 
-          // Ensure basic fields
           return {
             ...c,
-            bank: c.bank || "Unknown Bank",
-            name: c.name || "Unknown Card",
-            id: generateDeterministicId(c.bank || "bank", c.name || "name"),
+            id: generateDeterministicId(c.bank, c.name),
             isLive: true,
             verified: true,
-            rewards: rewards,
-            lastUpdated: todayStr
+            rewards: rewards
           };
         });
       }
@@ -146,12 +137,7 @@ export const fetchTrendingCards = async (
       console.error("JSON Parse Error", parseError);
     }
     return [];
-  } catch (e: any) {
-    // Check for 429 Resource Exhausted
-    if (e.message?.includes("429") || e.status === 429 || e.code === 429) {
-      console.warn("Gemini API Rate Limit Hit (429). Backing off.");
-      throw new Error("RATE_LIMIT");
-    }
+  } catch (e) {
     console.error("Failed to fetch trending cards", e);
     return [];
   }
@@ -171,24 +157,26 @@ export const analyzeSpendingScenario = async (
     };
   }
 
+  // Include IDs in context so AI can reference them
   const ownedCardContext = ownedCards.map(c => `ID: ${c.id} | ${c.bank} ${c.name}`).join(", ");
   
   const prompt = `
-    As a financial advisor, analyze: "${scenario}"
+    As a financial advisor, analyze this scenario: "${scenario}"
     User's Wallet: [${ownedCardContext}]
     
     Task:
-    1. Pick the BEST card from the wallet.
-    2. Suggest a Competitor Card if wallet cards are weak (<2%).
-    3. Use Google Search to find current merchant MCC codes or promos.
+    1. Identify the BEST card from the wallet for this specific merchant/category.
+    2. If all wallet cards are poor (<1.5% reward), suggest a top 'Competitor Card' available in Taiwan.
+    3. Search for specific merchant MCC codes, current promos, or exclusions (e.g. 7-11 exclusions).
     
     Return JSON:
     {
-      "bestCardId": "ID from wallet OR 'Competitor: [Name]'",
-      "reasoning": "Why it wins.",
-      "savingsEstimate": "e.g. 5%",
+      "bestCardId": "The 'ID' from the wallet list, or 'Competitor: [Card Name]' if suggesting external",
+      "reasoning": "Concise advice explaining WHY this card wins for this specific scenario.",
+      "savingsEstimate": "e.g. 3% (approx NT$30)",
       "alternativeCards": [
-        { "cardName": "Name", "savings": "Rate", "reason": "Reason", "link": "URL" }
+        { "cardName": "Card Name 1", "savings": "3%", "reason": "Good for weekends", "link": "https://..." },
+        { "cardName": "Card Name 2", "savings": "1%", "reason": "General rate only" }
       ]
     }
   `;
@@ -209,17 +197,10 @@ export const analyzeSpendingScenario = async (
     const result = JSON.parse(text);
     return { ...result, sources };
 
-  } catch (error: any) {
-    if (error.message?.includes("429") || error.status === 429) {
-        return {
-            bestCardId: "Error",
-            reasoning: language === 'zh-TW' ? "系統忙碌中，請稍後再試 (Rate Limit)。" : "System busy (Rate Limit). Please try again later.",
-            savingsEstimate: "N/A"
-        };
-    }
+  } catch (error) {
     return {
       bestCardId: "Error",
-      reasoning: "Analysis failed. Please try again.",
+      reasoning: "AI is currently busy. Please try again.",
     };
   }
 };
